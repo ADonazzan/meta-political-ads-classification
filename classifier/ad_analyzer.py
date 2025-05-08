@@ -84,7 +84,7 @@ class AdAnalyzer:
                 "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             }
 
-    def analyze_ad(self, **kwargs) -> dict:
+    def analyze(self, **kwargs) -> dict:
         try:
             prompt = self._create_prompt(**kwargs)
             response = self._send_request(prompt)
@@ -124,5 +124,5 @@ if __name__ == '__main__':
     }
 
     ad_analyzer = AdAnalyzer(model=model, temperature=temperature)
-    result = ad_analyzer.analyze_ad(**ad)
+    result = ad_analyzer.analyze(**ad)
     print(result)
