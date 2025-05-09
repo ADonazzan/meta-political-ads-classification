@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import logging
+from retry import retry
 
 from groq import Groq
 
@@ -9,12 +10,21 @@ logger = logging.getLogger(__name__)
 
 
 class AdAnalyzer:
-    def __init__(self, model: str, temperature: float = 0):
+    def __init__(self, model: str, temperature: float):
+        self.prompt = (
+            """Below, please find the transcript and/or the post associated with a political advertisement video from social media.\n
+            Please reply whether it is about the US *Presidential* Election 2024 (Trump vs. Harris) or any other election
+            (that may or may not have taken place on the same day).\n
+            Reply ONLY USING \"Presidential\", \"Other\", or \"Unsure\" and NOTHING ELSE.
+            """
+        )
+
         self.model = model
         self.temperature = temperature
         api_key = os.getenv('GROQ_API_KEY')
         self.client = Groq(api_key=api_key)
 
+    @retry(tries=3, delay=2, backoff=4, logger=logger)
     def _send_request(self, prompt: str) -> dict:
         chat = self.client.chat.completions.create(
             model=self.model,
@@ -35,20 +45,13 @@ class AdAnalyzer:
         return chat.to_dict()
 
     def _create_prompt(self, **kwargs) -> str:
-        prompt = (
-            """Below, please find the transcript and/or the post associated with a political advertisement video from social media.\n
-            Please reply whether it is about the US *Presidential* Election 2024 (Trump vs. Harris) or any other election
-            (that may or may not have taken place on the same day).\n
-            Reply ONLY USING \"Presidential\", \"Other\", or \"Unsure\" and NOTHING ELSE.
-            """
-        )
-
         # Add relevant ad fields with headers if available
         field_labels = {
             'ad_creative_bodies': "Ad Text",
             'ad_creative_link_titles': "Link Title",
             'transcript_translated': "Transcript",
             'bylines': "Bylines",
+            'page_name': "Page Name",
             'ad_delivery_start_time': "Start Time",
             'ad_delivery_stop_time': "Stop Time"
         }
@@ -56,9 +59,9 @@ class AdAnalyzer:
         for key, label in field_labels.items():
             value = kwargs.get(key)
             if value:
-                prompt += f"{label}:\n{value}\n\n"
+                self.prompt += f"{label}:\n{value}\n\n"
 
-        return prompt.strip()
+        return self.prompt.strip()
 
     def _parse_response(self, response: dict) -> dict:
         try:
@@ -89,15 +92,18 @@ class AdAnalyzer:
             prompt = self._create_prompt(**kwargs)
             response = self._send_request(prompt)
             result = self._parse_response(response)
+
+            logger.debug(f"Ad {kwargs.get('Index', 'UNKNOWN')} classified as {result['classification']}")
+
             return {
-                "id": kwargs.get("_id", None),
+                "id": kwargs.get("Index", None),
                 "classification": result["classification"],
                 "tokens": result["tokens"]
             }
         except Exception as e:
-            logger.warning(f"Error analyzing ad {kwargs.get('_id', 'UNKNOWN')}: {e}")
+            logger.warning(f"Error analyzing ad {kwargs.get('Index', 'UNKNOWN')}: {e}")
             return {
-                "id": kwargs.get("_id", None),
+                "id": kwargs.get("Index", None),
                 "classification": "Error",
                 "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             }
