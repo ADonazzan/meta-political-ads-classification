@@ -15,11 +15,12 @@ def load_file(relevant_cols, raw_path=raw_path, processed_path=processed_path) -
     :return: DataFrame with _id as index and cleaned relevant columns.
     """
 
-    expected_cols = relevant_cols[1:]  # Skip _id for column check
+    expected_cols = sorted(relevant_cols[1:])
 
     if os.path.exists(processed_path):
         df = pd.read_csv(processed_path, index_col=0)
-        if all(col in df.columns for col in expected_cols):
+
+        if sorted(df.columns.tolist()) == expected_cols:
             logger.info("Loaded processed file successfully.")
             return df
         else:

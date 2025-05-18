@@ -1,3 +1,4 @@
+from time import sleep
 import pandas as pd
 import logging
 
@@ -14,9 +15,7 @@ processed_path = 'data/processed/ads_with_transcripts.csv'
 classified_path = 'data/processed/classification_results.csv'
 
 relevant_cols = [
-    '_id', 'ad_creative_bodies', 'ad_creative_link_titles',
-    'ad_delivery_start_time', 'ad_delivery_stop_time', 'bylines',
-    'page_name', 'transcript_translated'
+    '_id', 'bylines', 'ad_creative_bodies', 'ad_creative_link_titles', 'page_name', 'transcript_translated'
 ]
 
 
@@ -37,7 +36,7 @@ def update_with_previous_results(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     try:
-        df_old = pd.read_csv(classified_path, index_col="_id")
+        df_old = pd.read_csv(classified_path, index_col="id")
     except FileNotFoundError:
         logger.warning(f"Previous results file not found at {classified_path}. Starting fresh.")
         return df
@@ -62,13 +61,14 @@ def merge_with_old_results(df_new: pd.DataFrame, classified_path: str) -> pd.Dat
     :return: Combined DataFrame with old + new results.
     """
     try:
-        df_old = pd.read_csv(classified_path, index_col="_id")
+        df_old = pd.read_csv(classified_path, index_col="id")
         logger.info(f"Loaded {len(df_old)} previously classified ads.")
     except FileNotFoundError:
         logger.warning(f"No previous results at {classified_path}. Starting fresh.")
-        df_old = pd.DataFrame()
+        return df_new
 
-    df_combined = pd.concat([df_old, df_new]).drop_duplicates(subset="_id", keep="last")
+    df_combined = pd.concat([df_old, df_new])
+    df_combined = df_combined[~df_combined.index.duplicated(keep="last")]
     logger.info(f"Combined total: {len(df_combined)} classified ads.")
 
     return df_combined
@@ -81,14 +81,15 @@ def iterate_over_df(df: pd.DataFrame, analyzer: AdAnalyzer) -> pd.DataFrame:
     :param analyzer: AdAnalyzer instance
     :return: Results DF only with the classification status
     """
+    logging.info("Starting classification process.")
     results = []
 
     for i, row in enumerate(df.itertuples()):
         try:
             ad_result = analyzer.analyze(**row._asdict())
             results.append(ad_result)
-            if i + 1 % 1000 == 0:
-                logger.info(f"Processed {i} ads out of {len(df)}")
+            if (i + 1) % 500 == 0:
+                logger.info(f"Processed {i+1} ads out of {len(df)}")
                 df_tmp = pd.DataFrame(results).set_index("id")
                 df_tmp.to_csv(f"data/processed/classification_results_tmp.csv")
         except Exception as e:
@@ -96,15 +97,26 @@ def iterate_over_df(df: pd.DataFrame, analyzer: AdAnalyzer) -> pd.DataFrame:
             results.append({
                 "id": row[0],
                 "classification": "Error",
-                "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
             })
+        # max calls: 1000/min
+        sleep(0.1)
 
     df_results = pd.DataFrame(results).set_index("id")
-
+    logging.info("Finished classification process.")
     return df_results
 
 
 def run_classification(model: str, temperature: float = 0, subset: int = 0) -> pd.DataFrame:
+    """
+    Main function to run the classification process for ads.
+    :param model:
+    :param temperature:
+    :param subset: specify a subset of ads to classify, 0 for all
+    :return:
+    """
     df = load_file(relevant_cols=relevant_cols, raw_path=raw_path, processed_path=processed_path)
     analyzer = AdAnalyzer(model=model, temperature=temperature)
 
@@ -121,6 +133,23 @@ def run_classification(model: str, temperature: float = 0, subset: int = 0) -> p
     return df_combined
 
 
+def get_classification_for_sample(sample_path: str = "data/processed/sample_labeled.csv"):
+    model = "llama-3.1-8b-instant"
+    temperature = 0
+
+    df = load_file(relevant_cols=relevant_cols, raw_path=raw_path, processed_path=processed_path)
+    analyzer = AdAnalyzer(model=model, temperature=temperature)
+
+    sample_df = pd.read_csv(sample_path)
+
+    df_to_analyze = pd.merge(sample_df[['_id']], df, on="_id", how="left")
+
+    df_to_analyze = df_to_analyze[80:]
+    df_to_analyze = df_to_analyze.set_index("_id")
+    df_results = iterate_over_df(df_to_analyze, analyzer)
+    df_results.to_csv("data/processed/sample_labeled_classified_3.csv")
+
+
 def test():
     df = load_file(relevant_cols=relevant_cols, raw_path=raw_path, processed_path=processed_path)
     df = df.sample(5)
@@ -135,8 +164,10 @@ def test():
 
 
 def main():
-    run_classification(model="llama-3.1-8b-instant", temperature=0, subset=5)
+    df_combined = run_classification(model="llama-3.1-8b-instant", temperature=0, subset=10000)
+    df_combined.to_csv(classified_path)
 
 
 if __name__ == '__main__':
+    setup_logger()
     main()
