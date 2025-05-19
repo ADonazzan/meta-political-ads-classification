@@ -2,7 +2,7 @@ import pandas as pd
 import ast
 
 
-def select_sample():
+def select_sample(sample_size=100):
     """
     Select a sample of ads, 100 with and 100 without transcripts for manual labeling.
     :return:
@@ -11,8 +11,8 @@ def select_sample():
 
     df = pd.read_csv(raw_path, low_memory=False)
 
-    sample = df[df.transcript_translated.notna()].sample(100)
-    sample2 = df[df.transcript_translated.isna()].sample(100)
+    sample = df[df.transcript_translated.notna()].sample(sample_size)
+    sample2 = df[df.transcript_translated.isna()].sample(sample_size)
 
     sample = pd.concat([sample, sample2])
 
@@ -67,6 +67,8 @@ def merge_labeled_classified():
     df_merged['classification'] = [1 if x == 'Presidential' else 0 for x in df_merged['classification']]
     df_merged['error'] = df_merged['is_presidential'] != df_merged['classification']
 
+    df_merged.drop(columns=['id'], inplace=True)
+
     df_merged.to_csv('data/processed/sample_labeled_merged.csv', index=False)
 
     metrics = compute_metrics(df_merged)
@@ -101,6 +103,6 @@ def merge_original_classified():
 
 
 if __name__ == '__main__':
-    # select_sample()
-    # merge_labeled_classified()
-    merge_original_classified()
+    # select_sample(1000)
+    print(merge_labeled_classified())
+    # merge_original_classified()
