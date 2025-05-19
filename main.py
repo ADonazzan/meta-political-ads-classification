@@ -152,7 +152,7 @@ def get_classification_for_sample(sample_path: str = "data/processed/sample_labe
     # Process the sample ads through the conventional analyzer
     df_to_analyze = df_to_analyze.set_index("_id")
     df_results = iterate_over_df(df_to_analyze, analyzer)
-    df_results.to_csv("data/processed/sample_labeled_classified_3.csv")
+    df_results.to_csv("data/processed/sample_labeled_classified.csv")
 
 
 def main():
