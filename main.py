@@ -7,22 +7,21 @@ from classifier.ad_analyzer import AdAnalyzer
 
 logger = logging.getLogger(__name__)
 
-# Path for data as downloaded:
+# Path for raw data, as downloaded:
 raw_path = 'data/raw/ads_with_transcripts_and_ideal_points.csv'
 # Path for data with ony the relevant columns, before classification:
 processed_path = 'data/processed/ads_with_transcripts.csv'
 # Path for data with the classification results:
 classified_path = 'data/processed/classification_results.csv'
 
-relevant_cols = [
-    '_id', 'bylines', 'ad_creative_bodies', 'ad_creative_link_titles', 'page_name', 'transcript_translated'
-]
+relevant_cols = ['_id', 'bylines', 'ad_creative_bodies', 'ad_creative_link_titles', 'page_name',
+                 'transcript_translated']
 
 
 def setup_logger():
     logging.basicConfig(
-        level=logging.INFO,  # Set the minimum log level (e.g., DEBUG, INFO, WARNING, ERROR)
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # Log message format
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logger.info("Starting process")
@@ -89,7 +88,7 @@ def iterate_over_df(df: pd.DataFrame, analyzer: AdAnalyzer) -> pd.DataFrame:
             ad_result = analyzer.analyze(**row._asdict())
             results.append(ad_result)
             if (i + 1) % 500 == 0:
-                logger.info(f"Processed {i+1} ads out of {len(df)}")
+                logger.info(f"Processed {i + 1} ads out of {len(df)}")
                 df_tmp = pd.DataFrame(results).set_index("id")
                 df_tmp.to_csv(f"data/processed/classification_results_tmp.csv")
         except Exception as e:
@@ -134,40 +133,42 @@ def run_classification(model: str, temperature: float = 0, subset: int = 0) -> p
 
 
 def get_classification_for_sample(sample_path: str = "data/processed/sample_labeled.csv"):
+    """
+    Run to get the model's classification for the manually labeled sample
+    :param sample_path:
+    :return:
+    """
     model = "llama-3.1-8b-instant"
     temperature = 0
 
+    # Load the data and instantiate the analyzer
     df = load_file(relevant_cols=relevant_cols, raw_path=raw_path, processed_path=processed_path)
     analyzer = AdAnalyzer(model=model, temperature=temperature)
 
+    # Select the ids from the labeled sample
     sample_df = pd.read_csv(sample_path)
-
     df_to_analyze = pd.merge(sample_df[['_id']], df, on="_id", how="left")
 
-    df_to_analyze = df_to_analyze[80:]
+    # Process the sample ads through the conventional analyzer
     df_to_analyze = df_to_analyze.set_index("_id")
     df_results = iterate_over_df(df_to_analyze, analyzer)
     df_results.to_csv("data/processed/sample_labeled_classified_3.csv")
 
 
-def test():
-    df = load_file(relevant_cols=relevant_cols, raw_path=raw_path, processed_path=processed_path)
-    df = df.sample(5)
-    results = []
-    for i, row in enumerate(df.itertuples()):
-        results.append({
-            "id": row[0],
-            "test": "test"
-        })
-
-    print(results)
-
-
 def main():
-    df_combined = run_classification(model="llama-3.1-8b-instant", temperature=0, subset=10000)
+    """
+    Runs the classification process for all ads and saves the results.
+    To avoid running all the ads, use the subset parameter.
+    If you want to run the classification for the sample, uncomment the get_classification_for_sample function.
+
+    :return: None
+    """
+    # df_combined = get_classification_for_sample()
+
+    df_combined = run_classification(model="llama-3.1-8b-instant", temperature=0, subset=0)
     df_combined.to_csv(classified_path)
 
 
 if __name__ == '__main__':
-    setup_logger()
+    setup_logger()  # Logging configuration
     main()
